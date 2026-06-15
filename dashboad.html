@@ -1100,42 +1100,37 @@ function upConfirm(){
   openCompany(c.id);
 }
 // ── PROXY-KONFIGURATION ──────────────────────────────────────
-const PROXY_URL = '/api/claude';
-const PROXY_STATUS_URL = '/api/status';
+const PROXY_URL = 'https://api.anthropic.com/v1/messages';
+const PROXY_STATUS_URL = null;
 
 // ── API-KEY VERWALTUNG ───────────────────────────────────────
-// Key liegt sicher auf Vercel — kein localStorage nötig
-function getApiKey() { return null; }
-function saveApiKey() {}
-function clearApiKey() {}
+function getApiKey() {
+  return localStorage.getItem('raiffeisen_api_key') || '';
+}
+function saveApiKey(key) {
+  localStorage.setItem('raiffeisen_api_key', key.trim());
+}
+function clearApiKey() {
+  localStorage.removeItem('raiffeisen_api_key');
+}
 
-async function checkProxy() {
+function checkProxy() {
   const dot   = document.getElementById('proxy-dot');
   const label = document.getElementById('proxy-label');
-  try {
-    const r = await fetch(PROXY_STATUS_URL, { signal: AbortSignal.timeout(4000) });
-    if (r.ok) {
-      const data = await r.json();
-      if (data.ok) {
-        dot.style.background = '#2e7d52';
-        label.style.color    = '#2e7d52';
-        label.textContent    = 'KI bereit';
-        return true;
-      } else {
-        dot.style.background = '#c0392b';
-        label.style.color    = '#c0392b';
-        label.textContent    = 'Kein API-Key';
-        return false;
-      }
-    }
-  } catch (_) {}
-  dot.style.background = '#e5a800';
-  label.style.color    = '#a06800';
-  label.textContent    = 'Demo-Modus';
-  return false;
+  const key   = getApiKey();
+  if (key && key.startsWith('sk-ant-')) {
+    dot.style.background = '#2e7d52';
+    label.style.color    = '#2e7d52';
+    label.textContent    = 'KI bereit';
+    return true;
+  } else {
+    dot.style.background = '#e5a800';
+    label.style.color    = '#a06800';
+    label.textContent    = 'API-Key fehlt';
+    return false;
+  }
 }
 checkProxy();
-setInterval(checkProxy, 10000);
 
 // ── API-KEY EINGABE MODAL ────────────────────────────────────
 function openApiKeyModal() {
@@ -1186,9 +1181,10 @@ async function upAnalyze(){
   if(!c) return;
   document.getElementById('up-analyze-btn').disabled=true;
 
-  // ── Schritt 1: prüfen ob Proxy läuft ──
-  upSetStatus('loading','Verbindung wird geprüft…');
-  const proxyOk = await checkProxy();
+  // ── Schritt 1: prüfen ob API-Key vorhanden ──
+  upSetStatus('loading','API-Key wird geprüft…');
+  const apiKey = getApiKey();
+  const proxyOk = !!(apiKey && apiKey.startsWith('sk-ant-'));
 
   if(!proxyOk){
     // ── DEMO-MODUS: simulierter Ablauf mit echten Beispieldaten ──
@@ -1217,7 +1213,11 @@ async function upAnalyze(){
   try{
     upSetStatus('loading','PDF wird an Claude gesendet…');
     const resp=await fetch(PROXY_URL,{method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
       body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2500,
         messages:[{role:'user',content:[
           {type:'document',source:{type:'base64',media_type:'application/pdf',data:_uploadPdfB64}},
